@@ -1,259 +1,290 @@
-# /carolinatatiani/Working-Space/SuEL/Interface.py
 '''
-* Last Modified: 18 Sep, 2025  15:7:43
-* by Carolina Tatiani
-* email: carolina.tatiani@unesp.br
-'''
+ # @ Created by: Carolina Tatiani
+ #@ At: 2025, Sep, 18 15:07
+ # @ Last Modification: 2025, Nov,16 22:52
+ # @ By: Carolina Tatiani
+ # @ E-mail: carolina.tatiani@unesp.br
+ '''
 
-import os
-from turtle import bk
-from unittest import case
-import mdtraj as md
+
+from bokeh.models import Select
 import numpy as np
-import bokeh.plotting as bp
-from bokeh.models import LinearColorMapper
-from bokeh.palettes import Viridis256  # Or any other palette
-from semver import match
+import os
+
+from bokeh.layouts import column, row
+from bokeh.models import (
+    Button,
+    TextInput,
+    LinearColorMapper,
+    ColumnDataSource,
+    TabPanel,
+    Tabs,
+    Slider,
+    ColorBar
+)
+import bokeh.palettes as bp
+from bokeh.plotting import figure, curdoc
+
+TOOLS = "hover,pan,wheel_zoom,zoom_in,zoom_out,reset,tap,save,box_select,poly_select,lasso_select,fullscreen,help"
+
+# -----------------------------------------------------------------------------
+# Load data
+# -----------------------------------------------------------------------------
+
+color_options = ["Select color file:"]
+color_array = [f for f in os.listdir(
+    '.') if f.endswith('.txt') or f.endswith('.dat')]
+color_array.sort()
+color_options.extend(color_array)
+
+dataset_options = ["Select projection file:"]
+projection_array = [f for f in os.listdir('.') if f.endswith('.out')]
+projection_array.sort()
+dataset_options.extend(projection_array)
+
+# -----------------------------------------------------------------------------
+# Helper functions
+# -----------------------------------------------------------------------------
+
+# ColumnDataSource starts empty
+source = ColumnDataSource(
+    data=dict(
+        x=[],
+        y=[],
+        alpha=[],
+        colors_norm=[]
+    )
+)
+
+current_palette = bp.Viridis256
+mapper = LinearColorMapper(palette=current_palette, low=0, high=1)
 
 
-print("Welcome to SuELEn\n") #TEMPORARY name
+def SetColors(colors_array):
+    """Normalize colors and update source with colors_norm."""
+    if len(colors_array) == 0 or len(source.data["x"]) == 0:
+        return
+
+    color_min = np.min(colors_array)
+    color_max = np.max(colors_array)
+
+    # avoid division by zero
+    if color_max == color_min:
+        colors_norm = np.zeros_like(colors_array)
+    else:
+        colors_norm = (colors_array - color_min) / (color_max - color_min)
+
+    source.data.update(colors_norm=colors_norm)
 
 
-print("To continue with the analisis some information will be needed. Remember that your system should not contain water, for speed purposes. and SuAVE must be installed in your computer.\n")
-
-while True:
-	print("Do you want to \n"
-	"A. continue interactively?\n"
-	"B. using a configuration file?\n"
-	"C. Plot projection\n"
-	"D. exit the program\n")
-
-	option = input()
-	match option:
-		case "A" | "a":
-			print("You chose to continue interactively. \n")
-
-			# Getting trajectory files
-			trajectory_file = input("Please, enter the path to the trajectory file : ")
-			while not os.path.isfile(trajectory_file):
-				print("ERROR: Invalid input. Please enter a valid file path.\n")
-				trajectory_file = input("Please, enter the path to the trajectory file: ")
-			while os.path.getsize(trajectory_file) == 0:
-				print("ERROR: The file is empty. Please provide a valid trajectory file.\n")
-				trajectory_file = input("Please, enter the path to the trajectory file: ")
-			print(f"Trajectory file '{trajectory_file}' found.\n")
-
-			# Getting topology files
-			topology_file = input("Please, enter the path to the topology file: ")
-			while not os.path.isfile(topology_file):
-				print("ERROR: Invalid input. Please enter a valid file path.\n")
-				topology_file = input("Please, enter the path to the topology file: ")
-			while os.path.getsize(topology_file) == 0:
-				print("ERROR: The file is empty. Please provide a valid topology file.\n")
-				topology_file = input("Please, enter the path to the topology file: ")
-			print(f"Topology file '{topology_file}' found.\n")	
-
-			# Getting dissimilarity matrix file (optional)	
-			dm_exists = input("Do you have a dissimilarity matrix file? (y/n): ")
-			if dm_exists.lower() == 'y':
-				dm_file = input("Please, enter the path to the dissimilarity matrix file: ")
-				while not os.path.isfile(dm_file):
-					print("ERROR: Invalid input. Please enter a valid file path.\n")
-					dm_file = input("Please, enter the path to the dissimilarity matrix file: ")
-				while os.path.getsize(dm_file) == 0:
-					print("ERROR: The file is empty. Please provide a valid dissimilarity matrix file.\n")
-					dm_file = input("Please, enter the path to the dissimilarity matrix file: ")
-				print(f"Dissimilarity matrix file '{dm_file}' found.\n")
-			else:
-				dm_file = None
-				print("A dissimilarity matrix will be computed from the trajectory file.\n")
-
-			elvim_selection=input("Choose the group for the ELViM analysis:\n")
-			# Check ELViM atomic group selection
-			valid_groups = ["protein", "CA", "all"]
-			while elvim_selection not in valid_groups:
-				print(f"Invalid ELViM atomic group selection. Please choose from {valid_groups}.\n")
-				elvim_selection=input("Choose the group for the ELViM analysis:\n")
-			elvim_flags=input("Write all the flags you want to use for the ELViM analysis. For example: -v -odm output.out -s0 0.9\n")
-			suave_selection=input("Choose the atomic group for the SuAVE analysis:\n")
-			bin=input("Choose the number of bins for the SuAVE analysis: \n")
-			suave_flags=input("Write all the commands you want to use for the SuAVE analysis separeated  by ;. For example: s_area; s_thick;s_order\n")
-			
-			print("Proceeding with the analysis...\n")
-			break
-
-		case "B" | "b":
-			print("You chose to use a configuration file\n")
-			while True:
-				input_file = input("Please, enter the path to the configuration file: ")
-				if not os.path.isfile(input_file):
-					print("Invalid input. Please enter a valid file path.\n")
-					continue	
-				else:
-					print(f"Configuration file '{input_file}' found.\n")
-					break					
-			if os.path.getsize(input_file) == 0:
-				print("The file is empty. Please provide a valid configuration file.\n")
-				break
-			else:
-				config = {}
-				with open(input_file, 'r') as file:
-					for line in file:
-						if '=' in line:
-							key, value = line.split('=', 1)
-							config[key.strip()] = value.strip().strip('"').strip("'")
-
-				# Required parameters
-				try:
-					trajectory_file = config["Trajectory file"]
-					topology_file = config["Topology file"]
-					dm_file = config.get("dissimilarity_matrix_file", None)
-					if dm_file == "none":
-						dm_file = None
-					elvim_selection = config["ELViM atomic group"]
-					# Check ELViM atomic group selection
-					valid_groups = ["protein", "CA", "all"]
-					if elvim_selection not in valid_groups:
-						print(f"Invalid ELViM atomic group selection: {elvim_selection}\n")
-						exit()
-					elvim_flags = config.get("ELViM flags", "")
-					suave_selection = config.get("SuAVE atomic group", "")
-					bin= config.get("Number of bins", "")
-					suave_cmds = config.get("SuAVE commands", "")
+def execute_command(cmd):
+    ret = os.system(cmd)
+    if ret == 0:
+        print("Command executed successfully.")
+    else:
+        print("Error executing command.")
 
 
-					print(f"Trajectory file '{trajectory_file}' and topology file '{topology_file}' loaded from configuration file.\n")
-					print("Details of the analysis:\n")
-					if dm_file:
-						print(f"Dissimilarity matrix file: {dm_file}\n")
-					else:
-						print("A dissimilarity matrix will be computed from the trajectory file.\n")
-						print(f"ELViM atomic group: {elvim_selection}")
-						print(f"ELViM flags: {elvim_flags}")
-						print(f"SuAVE atomic group: {suave_selection}")
-						print(f"Number of bins: {bin}")
-						print(f"SuAVE commands: {suave_cmds}")
-						break
-				except KeyError as e:
-					print(f"Missing required parameter in configuration file: {e}\n")
-					break	
+def save_selection_callback():
+    idx = source.selected.indices
 
-		case "C" | "c":
-			print("You chose to plot the projection\n")
-			projection_file = input("Please enter the path to the projection file: ")
-			while not os.path.isfile(projection_file):
-				print("ERROR: Invalid input. Please enter a valid file path.\n")
-				projection_file = input("Please enter the path to the projection file: ")
-			while os.path.getsize(projection_file) == 0:
-				print("ERROR: The file is empty. Please provide a valid projection file.\n")
-				projection_file = input("Please enter the path to the projection file: ")
-			print(f"Projection file '{projection_file}' found.\n")
-			color_file = input("Please enter the path to the file containing the data to color the projection: ")
-			while not os.path.isfile(color_file):
-				print("ERROR: Invalid input. Please enter a valid file path.\n")
-				color_file = input("Please enter the path to the file containing the data to color the projection: ")
-			while os.path.getsize(color_file) == 0:
-				print("ERROR: The file is empty. Please provide a valid data file.\n")
-				color_file = input("Please enter the path to the file containing the data to color the projection: ")
-			print(f"Color data file '{color_file}' found.\n")
+    if not idx:
+        print("No points selected.")
+        return
 
-			# Load projection data
-			proj=np.loadtxt(projection_file, comments='#')
-			color_data=np.loadtxt(color_file, comments='#')
+    x_sel = np.array(source.data["x"])[idx]
+    y_sel = np.array(source.data["y"])[idx]
 
-			# Create Bokeh plot
-			TOOLS="hover,pan,wheel_zoom,zoom_in,zoom_out,reset,tap,save,box_select,poly_select,lasso_select,fullscreen,help"
-			p=bp.figure(title="ELViM Projection colored by SuAVE Analysis", tools=TOOLS, active_drag="pan", active_scroll="wheel_zoom")
-			
-			x, y = proj[:, 0], proj[:, 1]
+    data = np.column_stack([x_sel, y_sel])
 
-			color_min, color_max = color_data.min(), color_data.max()
-			normalized_colors = (color_data - color_min) / (color_max - color_min)
+    fname = "Selection.npy"
+    np.save(fname, data)
 
-			# Map normalized values to a colormap (e.g., Viridis256)
-			color_mapper = LinearColorMapper(palette=Viridis256, low=0, high=1)
-			hex_colors = [Viridis256[int(value * 255)] for value in normalized_colors]
-			colors = hex_colors
+    print(f"Saved {len(idx)} selected points to {fname}.")
 
-			# Proceed to plot the projection
-			p.scatter(x, y, color=colors, size=2, alpha=0.6)
-			bk.output_file("projection.html")
-			bk.show(p)
-			print("Projection plot generated successfully as 'projection.html'.\n")
-			exit()
-			
-		case "D" | "d":
-				print("You chose to exit the program\n")		
-				exit()
-			
-		case _:
-			print("Invalid option. Please choose A, B, or C.\n")
+# -----------------------------------------------------------------------------
+# Main ELViM projection plot
+# -----------------------------------------------------------------------------
 
-# Load trajectory
-try:
-	traj = md.load(trajectory_file, top=topology_file)
-	print("Trajectory loaded successfully.\n")
-except Exception as e:
-	print(f"Error loading trajectory: {e}\n")
-	exit()
 
-# Pre-process trajectory: centering and aligning
-traj = traj.center_coordinates()
-print("Trajectory centered successfully.\n")
-traj.save_pdb('centered_ref.pdb')
+p = figure(height=600, title="ELViM Projection", toolbar_location="above",
+           tools=TOOLS, sizing_mode="scale_width")
 
-# Prepare trajectory for ELViM analysis
-traj_elvim = traj.atom_slice(traj.topology.select(f"name {elvim_selection}"))
-traj_elvim.save('traj_elvim.dcd')
-traj_elvim[0].save('ref_elvim.pdb')
+points = p.scatter(
+    x='x', y='y', source=source, size=5,
+    fill_color={'field': 'colors_norm', 'transform': mapper},
+    fill_alpha='alpha',
+    line_alpha='alpha'
+)
+color_bar = ColorBar(color_mapper=mapper, location=(0, 0), width=8)
+p.add_layout(color_bar, 'right')
 
-# SuAVE analysis
-print("Starting SuAVE analysis...\n")
+# -----------------------------------------------------------------------------
+# SuAVE Tab
+# -----------------------------------------------------------------------------
 
-suave_cmds_list = suave_cmds.split(';')
-suave_cmds_list.insert(0, "s_index")
-suave_cmds_list.insert(0,"s_grid")
+suave_cmd = TextInput(title="SuAVE command line:")
+run_suave = Button(label="Run SuAVE")
 
-for cmd in suave_cmds_list:
-	match cmd:
-		case "s_index":
-			bash_command = f"{cmd} -in centered_ref.pdb"
-		case "s_grid":
-			bash_command = f"{cmd} -in centered_ref.pdb -ind ind1.ndx -bin -rmsd"
-		case "s_area":
-			cmd += f" -in centered_ref.pdb -ind1 ind1.ndx -ind2 ind2.ndx -bin -rmsd"
-		case "s_thick":
-			cmd += f" -in centered_ref.pdb -ind1 ind1.ndx -ind2 ind2.ndx -bin -rmsd -range"
-		case "s_order":
-			cmd += f" -in centered_ref.pdb -ind1 ind1.ndx -bin -rmsd"
-		case "s_dens":
-			cmd += f" -in centered_ref.pdb -ind1 ind1.ndx -ind2 ind2.ndx -dens lp1.ndx -bin -rmsd -slices"
-		case "s_topog":
-			cmd += f" -in centered_ref.pdb -ind1 ind1.ndx -ind2 ind2.ndx -bin"
-		case _:
-			print("Invalid SuAVE command. Skipping...\n")
-	 
-	print(f"Executing SuAVE command: {bash_command}\n")
-	os.system(bash_command)
-	# Check if the command was successful
-	if os.WEXITSTATUS(os.system(bash_command)) == 0:
-		print("SuAVE command executed successfully.\n")
-	else:
-		print("Error occurred while executing SuAVE command.\n")	
 
-print("SuAVE analysis completed successfully.\n")
+def run_suave_callback():
+    print("Running SuAVE...")
+    execute_command(suave_cmd.value)
 
-print("Proceeding with ELViM analysis...\n")
 
-# ELViM analysis
-if dm_file:
-	elvim_flags += f" -dm {dm_file}"
-else:
-	elvim_flags += " -f traj_elvim.dcd -t ref_elvim.pdb"
+run_suave.on_click(run_suave_callback)
 
-bash_command_elvim = f" python ELViM.py {elvim_flags}"
-os.system(bash_command_elvim)
+suave_layout = column(suave_cmd, run_suave)
+suave_panel = TabPanel(child=suave_layout, title="SuAVE")
 
-print("ELViM analysis completed successfully.\n")
+# -----------------------------------------------------------------------------
+# ELViM Tab
+# -----------------------------------------------------------------------------
 
-print("SuELEn analysis finished. Thank you for using SuELEn!\n")
+elvim_cmd = TextInput(title="Elvim command line:")
+run_elvim = Button(label="Run ELViM")
+
+projection_select = Select(title="Select projection file:",
+                           options=dataset_options,
+                           value=dataset_options[0] if dataset_options else "")
+
+color_select = Select(title="Color files available:",
+                      options=color_options,
+                      value=color_options[0] if color_options else "")
+
+
+def run_elvim_callback():
+    print("Running ELViM...")
+    execute_command(elvim_cmd.value)
+
+
+def apply_projection_callback():
+    fname = projection_select.value
+    data = np.loadtxt(fname)
+    n = data.shape[0]
+    source.data.update(
+        x=data[:, 0],
+        y=data[:, 1],
+        alpha=np.ones(n),
+        colors_norm=np.zeros(n),
+    )
+
+
+def apply_colors_callback():
+    fname = color_select.value
+    if not fname or fname.startswith("Select"):
+        return
+
+    colors = np.loadtxt(fname)
+
+    # guarda internamente o último vetor
+    if len(colors) != len(source.data['x']):
+        print("Error: color vector does not match number of points.")
+        return
+    SetColors(colors)
+
+
+run_elvim.on_click(run_elvim_callback)
+
+
+elvim_layout = column(elvim_cmd, run_elvim, projection_select, color_select)
+elvim_panel = TabPanel(child=elvim_layout, title="ELViM")
+
+projection_select.on_change(
+    'value', lambda attr, old, new: apply_projection_callback())
+color_select.on_change('value', lambda attr, old, new: apply_colors_callback())
+
+# -----------------------------------------------------------------------------
+# Configurações Tab — sliders and palette select
+# -----------------------------------------------------------------------------
+
+
+point_size_slider = Slider(title="Point Size",
+                           start=1, end=20, step=1, value=5)
+alpha_slider = Slider(title="Transparency (alpha)",
+                      start=0.0, end=1.0, step=0.01, value=1.0)
+palette_select = Select(title="Color Palette:", options=[
+                        "Viridis", "Inferno", "Magma", "Plasma", "Turbo"], value="Viridis")
+
+
+save_selection_button = Button(
+    label="Save Selected Points", button_type="success")
+
+palette_map = {
+    "Viridis": bp.Viridis256,
+    "Inferno": bp.Inferno256,
+    "Magma": bp.Magma256,
+    "Plasma": bp.Plasma256,
+    "Turbo": bp.Turbo256,
+}
+
+
+def update_point_size(attr, old, new):
+    points.glyph.size = new
+
+
+def update_alpha(attr, old, new):
+    n = len(source.data['x'])
+    if n == 0:
+        return
+
+    source.data['alpha'] = [new] * n
+    points.glyph.fill_alpha = new
+    points.glyph.line_alpha = new
+
+
+def update_palette(attr, old, new):
+    global current_palette
+    current_palette = palette_map[new]
+    mapper.palette = current_palette
+    if "color_raw" in source.data:
+        SetColors(source.data["color_raw"])
+
+
+point_size_slider.on_change('value', update_point_size)
+alpha_slider.on_change('value', update_alpha)
+palette_select.on_change('value', update_palette)
+save_selection_button.on_click(save_selection_callback)
+
+config_layout = column(
+    point_size_slider,
+    alpha_slider,
+    palette_select,
+    save_selection_button
+)
+
+config_panel = TabPanel(child=config_layout, title="Plot Configurations")
+
+# -----------------------------------------------------------------------------
+# Tabs container
+# -----------------------------------------------------------------------------
+
+tabs = Tabs(tabs=[suave_panel, elvim_panel, config_panel])
+
+# -----------------------------------------------------------------------------
+# Final layout
+# -----------------------------------------------------------------------------
+
+# --- Layout revised to ensure plot appears correctly ---
+# CHANGES:
+# + Force tabs to have fixed width (250px)
+# + Ensure plot expands to the rest of the screen
+# + Use stretch_height only for tabs, stretch_both for plot
+# + Wrap plot inside a container if needed
+
+# Set fixed width for left-side tabs
+# (prevents them from expanding horizontally and hiding the plot)
+tabs.width = 450
+p.width = 600
+p.height = 600
+
+tabs.sizing_mode = "stretch_height"
+p.sizing_mode = "fixed"
+
+layout = row(
+    tabs,
+    p,
+    sizing_mode="stretch_both",
+)
+
+curdoc().add_root(layout)
